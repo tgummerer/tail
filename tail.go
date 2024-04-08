@@ -293,6 +293,7 @@ func (tail *Tail) tailFileSync() {
 
 	tail.openReader()
 
+	stopOnNextEOF := false
 	// Read line by line.
 	for {
 		// do not seek in named pipes
@@ -341,11 +342,24 @@ func (tail *Tail) tailFileSync() {
 				}
 			}
 
+			if stopOnNextEOF {
+				return
+			}
+
 			// When EOF is reached, wait for more data to become
 			// available. Wait strategy is based on the `tail.watcher`
 			// implementation (inotify or polling).
 			err := tail.waitForChanges()
 			if err != nil {
+				// When StopAtEOF() is called, we
+				// might have more data to read, that
+				// the filewatcher might not have
+				// notified us about.  Continue
+				// reading until we found an EOF
+				// again, and then exit.
+				if err == ErrStop && tail.Err() == errStopAtEOF {
+					stopOnNextEOF = true
+				}
 				if err != ErrStop {
 					tail.Kill(err)
 				}
